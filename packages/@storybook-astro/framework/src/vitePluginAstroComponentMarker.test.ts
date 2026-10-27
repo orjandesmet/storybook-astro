@@ -1,7 +1,7 @@
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, test } from 'vitest';
+import { afterAll, describe, expect, test, vi } from 'vitest';
 import {
   extractAstroImportSpecifiers,
   vitePluginAstroComponentMarker
@@ -191,6 +191,27 @@ describe('vitePluginAstroComponentMarker transform', () => {
 
     expect(result?.code).toContain('.wrap img { width: 100%; }');
     expect(result?.code).not.toContain(':global(');
+  });
+
+  test('follows child components imported through tsconfig path aliases in build mode', async () => {
+    writeAstroFile('alias/tsconfig.json', '{ "compilerOptions": { "paths": { "@components/*": ["./src/components/*"] } } }');
+    writeAstroFile(
+      'alias/src/components/Button.astro',
+      '<button class="button">Click</button>\n<style>.button { color: teal; }</style>'
+    );
+    const pagePath = writeAstroFile(
+      'alias/src/Page.astro',
+      "---\nimport Button from '@components/Button.astro';\n---\n<Button />"
+    );
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(join(tempDir, 'alias'));
+
+    try {
+      const result = await createPlugin('build').transform(ASTRO6_CLIENT_STUB, pagePath);
+
+      expect(result?.code).toContain('.button { color: teal; }');
+    } finally {
+      cwd.mockRestore();
+    }
   });
 
   test('handles circular child imports in build mode without recursing forever', async () => {

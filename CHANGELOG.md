@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `build-storybook` now collects styles from child `.astro` components imported through tsconfig `paths` aliases (e.g. `@components/*`), not only relative imports.
+
 ## [1.14.0] - 2026-10-24
 
 ### Added

@@ -279,9 +279,44 @@ function generateInlineStyles(filePath: string): string {
 }
 
 /**
+ * Reads the `paths` aliases from the project's tsconfig.json (e.g.
+ * `@components/*` -> `src/components/*`). Returns an empty list when the file is
+ * missing or isn't plain JSON with line comments.
+ */
+function loadTsconfigAliases(): Array<{ prefix: string; target: string }> {
+  try {
+    const root = process.cwd();
+    const raw = readFileSync(resolve(root, 'tsconfig.json'), 'utf-8').replace(/^\s*\/\/.*$/gm, '');
+    const compilerOptions = JSON.parse(raw).compilerOptions ?? {};
+    const base = resolve(root, compilerOptions.baseUrl ?? '.');
+
+    return Object.entries<string[]>(compilerOptions.paths ?? {}).map(([key, targets]) => ({
+      prefix: key.replace(/\*$/, ''),
+      target: resolve(base, targets[0].replace(/\*$/, ''))
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Resolves a child component specifier to a file path: relative paths from the
+ * importing file, aliases through tsconfig `paths`. Packages return null.
+ */
+function resolveAstroSpecifier(specifier: string, fromFile: string): string | null {
+  if (specifier.startsWith('.')) {return resolve(dirname(fromFile), specifier);}
+
+  for (const { prefix, target } of loadTsconfigAliases()) {
+    if (specifier.startsWith(prefix)) {return resolve(target, specifier.slice(prefix.length));}
+  }
+
+  return null;
+}
+
+/**
  * Collects <style> block contents from a component and its child .astro imports.
- * Only relative specifiers are followed (aliases and packages can't be resolved
- * from disk here). The visited set guards against import cycles.
+ * Relative and tsconfig-aliased specifiers are followed; packages can't be
+ * resolved from disk here. The visited set guards against import cycles.
  */
 function collectStyleBlocks(
   filePath: string,
@@ -301,9 +336,11 @@ function collectStyleBlocks(
   const blocks = extractStyleBlocks(source).map((css) => ({ file: filePath, css }));
 
   for (const specifier of extractAstroImportSpecifiers(source)) {
-    if (!specifier.startsWith('.')) {continue;}
+    const childPath = resolveAstroSpecifier(specifier, filePath);
 
-    blocks.push(...collectStyleBlocks(resolve(dirname(filePath), specifier), visited));
+    if (!childPath) {continue;}
+
+    blocks.push(...collectStyleBlocks(childPath, visited));
   }
 
   return blocks;
