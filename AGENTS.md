@@ -406,6 +406,22 @@ If only a **child** component's styles are missing (a parent story renders the c
 4. **Verify**: Check browser console and Storybook UI for errors
 5. **Run Tests**: `yarn test` before committing
 
+### Before Opening a PR
+
+AI-generated changes get an independent review before the PR is opened. The requirement is that the reviewer starts from **fresh context**: a new agent session that sees only the committed changes, not the session that wrote them. A reviewer that shares the author's context tends to confirm the author's reasoning. Any AI tool can satisfy this; the commands below are for Claude Code.
+
+- [ ] `nvm use`, then `yarn lint`, `yarn lint:links`, and `yarn test` pass
+- [ ] All changes are committed and `git status` shows no modified files. The review reads commits, so uncommitted work is silently skipped and an empty branch reports no findings
+- [ ] Your local `develop` is current: `git fetch origin develop:develop` (run it from your feature branch). The review compares against it, so a stale `develop` pulls unrelated commits into the review
+- [ ] In a fresh session (new terminal, or `/clear`), run `/code-review high <your-branch>`. Use `xhigh` for changes to `render.tsx`, `middleware.ts`, or the [Astro version compatibility layers](#astro-version-compatibility-layers)
+- [ ] Give the reviewer only the target, not an explanation of the change
+- [ ] Each finding is fixed or deliberately dismissed with a reason
+- [ ] If the fixes change behavior or touch code beyond the findings, re-run the review on the updated branch
+
+After the PR is open, later rounds can target it by number (`/code-review high <pr-number>`). That doesn't replace the review above. Add `--comment` only if you want the findings posted on the PR; it posts them as-is, so triage first.
+
+When you finish writing a change that's headed for a PR, tell the user to run this review in a fresh session instead of reviewing your own work.
+
 ## External Resources
 
 - [Storybook Framework API](https://storybook.js.org/docs/configure/integration/frameworks)
