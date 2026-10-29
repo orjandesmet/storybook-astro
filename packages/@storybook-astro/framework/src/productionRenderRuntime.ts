@@ -5,6 +5,7 @@ import { isAstroComponentSlot, serializeAstroComponentMarkers, type SlotValue } 
 import { createAstroRenderHandler, type HandlerProps } from './astroRenderHandler.ts';
 import { separateStorySlots } from './lib/separate-story-slots.ts';
 import { ssrLoadModuleWithFsFallback } from './lib/ssr-load-module-with-fs-fallback.ts';
+import { loadComponentStyles } from './lib/componentStyles.ts';
 import { composeStory } from './portable-stories.ts';
 import type { Integration } from './integrations/index.ts';
 import type { SanitizationOptions } from './lib/sanitization.ts';
@@ -53,6 +54,8 @@ type ProductionRenderRuntimeOptions = {
   resolveFrom: string;
   resolveComponentId?: (id: string) => string;
   fonts?: FrameworkOptions['fonts'];
+  /** Fail a render whose component styles fail to load. Set by the static build's prerender. */
+  failOnStyleError?: boolean;
 };
 
 /** Creates the shared SSR runtime used by both build-time prerendering and the standalone render server. */
@@ -105,7 +108,13 @@ export async function createProductionRenderRuntime(
       },
       invalidateModuleGraph: () => {
         viteServer.moduleGraph.invalidateAll();
-      }
+      },
+      loadComponentStyles: (componentIds) =>
+        loadComponentStyles(
+          viteServer,
+          componentIds.map((id) => options.resolveComponentId?.(id) ?? id)
+        ),
+      failOnStyleError: options.failOnStyleError
     });
 
     const composeDecoratedTree = async ({

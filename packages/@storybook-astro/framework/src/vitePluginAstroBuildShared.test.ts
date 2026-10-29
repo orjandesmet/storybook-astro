@@ -1,8 +1,8 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { collectHydratedComponentPaths } from './vitePluginAstroBuildShared.ts';
+import { collectHydratedComponentPaths, copyRuntimeSnapshot } from './vitePluginAstroBuildShared.ts';
 
 describe('collectHydratedComponentPaths', () => {
   let tmpDir: string;
@@ -146,5 +146,54 @@ describe('collectHydratedComponentPaths', () => {
     const result = await collectHydratedComponentPaths(join(tmpDir, 'Island.astro'), tmpDir);
 
     expect(result).toContain(counterFile.replace(/\\/g, '/'));
+  });
+});
+
+describe('copyRuntimeSnapshot', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'storybook-astro-snapshot-test-'));
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  test('copies the stylesheets a component\'s <style> blocks use, so the render server can compile them', async () => {
+    const project = join(tmpDir, 'project');
+    const snapshotRoot = join(tmpDir, 'server', 'snapshot');
+
+    await mkdir(join(project, 'src', 'styles', 'theme'), { recursive: true });
+    await writeFile(
+      join(project, 'src', 'Card.astro'),
+      `<div class="card" />\n<style lang="scss">\n@use 'styles/tokens';\n@use 'styles/mixins.scss';\n@use 'sass:math';\n</style>\n<style>@import "./styles/base.css";</style>`
+    );
+    // A Sass partial, which forwards another one through its folder's index.
+    await writeFile(join(project, 'src', 'styles', '_tokens.scss'), `@forward './theme';`);
+    await writeFile(join(project, 'src', 'styles', 'theme', '_index.scss'), '$accent: teal;');
+    await writeFile(join(project, 'src', 'styles', 'base.css'), '@import url(./reset.css);');
+    await writeFile(join(project, 'src', 'styles', 'reset.css'), '* { margin: 0; }');
+    await writeFile(join(project, 'src', 'styles', '_mixins.scss'), '@mixin card {}');
+
+    await copyRuntimeSnapshot({
+      resolveFrom: project,
+      snapshotRoot,
+      snapshotDirName: 'snapshot',
+      astroComponents: [join(project, 'src', 'Card.astro')]
+    });
+
+    const copied = [
+      'src/Card.astro',
+      'src/styles/_tokens.scss',
+      'src/styles/_mixins.scss',
+      'src/styles/theme/_index.scss',
+      'src/styles/base.css',
+      'src/styles/reset.css'
+    ];
+
+    for (const file of copied) {
+      await expect(access(join(snapshotRoot, file)), file).resolves.toBeUndefined();
+    }
   });
 });
